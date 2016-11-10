@@ -97,7 +97,7 @@ float *  matrixProduct(int rows, int columns, int columnsB, float * matrixA, flo
     for (i=0; i<rows; i++) {
         for(j=0; j<columnsB; j++){
             for (l=0; l<columns; l++) {
-                matrixResult[i*rows+j] += alfa*matrixA[i*columns+l]*matrixB[l*columnsB+j];
+                matrixResult[i*columnsB+j] += alfa*matrixA[i*columns+l]*matrixB[l*columnsB+j];
             }
         }
     }
