@@ -6,6 +6,33 @@
 #include "mpi.h"
 
 /*
+* Funtion: checkMatrixDifferences
+* --------------------
+* Imprime una matriz por pantalla
+*
+* rows: Número de filas de la matriz
+* columns: Número de columns de la matriz
+* matrixA: La primera matriz
+* matrixB: La primera matriz
+*
+* returns: Devuelve 1 si las matrices difieren el alguna
+  posición o 0 en caso contrario
+*/
+int checkMatrixDifferences(int rows, int columns, float * matrixA, float * matrixB){
+    int i, j;
+    int ret=0;
+    for (i=0; i < rows; i++){
+        for(j=0; j < columns; j++){
+            if (matrixA[i*columns+j] != matrixB[i*columns+j]){
+                ret=1;
+                printf("Desigualdad en el elmento [%d][%d]: %f != %f\n", i, j, matrixA[i*columns+j], matrixB[i*columns+j]);
+            }
+        }
+    }
+    return ret;
+}
+
+/*
 * Funtion: printMatrix
 * --------------------
 * Imprime una matriz por pantalla
@@ -180,8 +207,8 @@ int * getDispls(int rows, int columns, int numProcs, int  * Counts){
         exit(1);
     }
 
-    for (j=0, i=0; i < rows && j < numProcs; j++, i = i + (Counts[j] / columns)){
-        displs[j]=i*columns;
+    for (j=0, i=0; i < rows*columns && j < numProcs; j++, i = i + (Counts[j-1])){
+        displs[j]=i;
     }
     return displs;
 }
@@ -225,7 +252,7 @@ float *  matrixProduct(int rows, int columns, int columnsB, float * matrixA, flo
 }
 
 int main(int argc, char * argv[]){
-    int rank, numprocs, n, k, m;
+    int rank, numProcs, n, k, m;
     float alfa;
     int * displs;
     int * sendCounts;
@@ -240,7 +267,7 @@ int main(int argc, char * argv[]){
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     // Determinar el numero de procesos
 
-    MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
+    MPI_Comm_size(MPI_COMM_WORLD, &numProcs);
 
 	if (!rank){	
 		if ( argc < 5 ){
@@ -275,8 +302,8 @@ int main(int argc, char * argv[]){
     MPI_Bcast(&m, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&alfa, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-    sendCounts = getSendCounts(m, k, numprocs);
-    displs = getDispls(m, k, numprocs, sendCounts);
+    sendCounts = getSendCounts(m, k, numProcs);
+    displs = getDispls(m, k, numProcs, sendCounts);
 
     if (rank){
         matrixA = (float *) malloc (sendCounts[rank] * k * sizeof(float));
@@ -296,17 +323,22 @@ int main(int argc, char * argv[]){
     
     matrixResult = matrixProduct(sendCounts[rank] / k, k, n, matrixA, matrixB, alfa);
 
-    recvCounts = getRecvCounts(k, n, sendCounts, numprocs);
+    recvCounts = getRecvCounts(k, n, sendCounts, numProcs);
     free(displs);
-    displs = getDispls(m, n, numprocs, recvCounts);
+    displs = getDispls(m, n, numProcs, recvCounts);
     
     MPI_Gatherv(matrixResult, recvCounts[rank], MPI_FLOAT, matrixC, recvCounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
 
     if (!rank){
+	    float * matrixTest = NULL;
+        matrixTest = (float *) malloc(m * n * sizeof(float));
+        matrixTest = matrixProduct(m,k,n, matrixA, matrixB, alfa);
+        if (!checkMatrixDifferences(m, n, matrixTest, matrixC)){
+            printf("No difiere ningún valor en las matrices.\n");
+        };
         free(matrixC);
-        matrixC = matrixProduct(m,k,n, matrixA, matrixB, alfa);
-        free(matrixC);
+        free(matrixTest);
     }
 
     free(sendCounts);
