@@ -1,8 +1,20 @@
 #include <stdlib.h>
+#include <string.h>
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
 #include "mpi.h"
+
+void printMatrix(int rows, int columns, float * matrix){
+    int i, j;
+    for (i=0; i < rows; i++){
+        printf("|");
+        for (j=0; j < columns; j++)
+            printf(" %f |", matrix[i*columns+j]);
+        printf("\n");
+    }
+    printf("\n");
+}
 
 /*La siguiente función inicializa la matriz asignando valores aleatorios*/
 float * getRamdomMatrix(int rows, int columns){
@@ -13,7 +25,7 @@ float * getRamdomMatrix(int rows, int columns){
     float * matrix = (float *) malloc(rows * columns * sizeof(int));
 
     if ( matrix == NULL ){
-		fprintf(stderr, "No se ha podido obtener alguna de las matrices.\n");
+		fprintf(stderr, "Error de memoria\n");
 		MPI_Finalize();
         exit(1);
     }
@@ -31,7 +43,7 @@ float * getMatrix(int rows, int columns){
     float * matrix = (float *) malloc(rows * columns * sizeof(float));
 
     if ( matrix == NULL ){
-		fprintf(stderr, "No se ha podido obtener alguna de las matrices.\n");
+		fprintf(stderr, "Error de memoria\n");
 		MPI_Finalize();
         exit(1);
     }
@@ -48,7 +60,7 @@ int * getSendCounts(int rows, int columns, int numProcs){
     int * sendCounts = (int *) malloc(numProcs * sizeof(int));
 
     if ( sendCounts == NULL ){
-		fprintf(stderr, "No se ha podido asignar memoria a sendCounts.\n");
+		fprintf(stderr, "Error de memoria\n");
         MPI_Abort(MPI_COMM_WORLD, 1);  
         exit(1);
     }
@@ -68,32 +80,46 @@ int * getSendCounts(int rows, int columns, int numProcs){
 int * getRecvCounts(int columns, int columnsB, int * sendCounts, int numProcs){
     int * recvCounts = (int *) malloc( numProcs * sizeof(int));
     int i;
+
+    if ( recvCounts == NULL ){
+		fprintf(stderr, "Error de memoria\n");
+        MPI_Abort(MPI_COMM_WORLD, 1);  
+        exit(1);
+    }
+
     for (i=0; i < numProcs; i++)
         recvCounts[i] = (sendCounts[i] / columns) * columnsB;
     return recvCounts;
         
 }
 
-int * getDispls(int rows, int columns, int numProcs, int  * sendCounts){
+int * getDispls(int rows, int columns, int numProcs, int  * Counts){
     int i, j;
     int * displs = (int *) malloc ( numProcs * sizeof(int));
 
     if ( displs == NULL ){
-		fprintf(stderr, "No se ha podido asignar memoria a displs.\n");
+		fprintf(stderr, "Error de memoria\n");
         MPI_Abort(MPI_COMM_WORLD, 1);  
         exit(1);
     }
 
-    for (j=0, i=0; i < rows && j < numProcs; j++, i = i + (sendCounts[j] / columns)){
+    for (j=0, i=0; i < rows && j < numProcs; j++, i = i + (Counts[j] / columns)){
         displs[j]=i*columns;
     }
-
     return displs;
 }
 
 float *  matrixProduct(int rows, int columns, int columnsB, float * matrixA, float * matrixB, float alfa){
     int i,j,l;
     float * matrixResult = (float *) malloc ( rows * columnsB * sizeof(float) );
+    memset(matrixResult, 0, rows * columnsB * sizeof(float));
+
+    if ( matrixResult == NULL ){
+		fprintf(stderr, "Error de memoria\n");
+        MPI_Abort(MPI_COMM_WORLD, 1);  
+        exit(1);
+    }
+
     for (i=0; i<rows; i++) {
         for(j=0; j<columnsB; j++){
             for (l=0; l<columns; l++) {
@@ -119,6 +145,7 @@ int main(int argc, char * argv[]){
     // Determinar el rango del proceso invocado
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     // Determinar el numero de procesos
+
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
 
 	if (!rank){	
@@ -134,7 +161,7 @@ int main(int argc, char * argv[]){
 		alfa = atof(argv[4]);
 
 		if ( n < 1 || k < 1 || m < 1 ){
-			fprintf(stderr, "Algún parámetro no tiene un valor aceptable\n");
+			fprintf(stderr, "Las dimensiones de las matrices no pueden ser menores a 0\n");
             MPI_Abort(MPI_COMM_WORLD, 1);  
             exit(1);
 		}
@@ -142,29 +169,27 @@ int main(int argc, char * argv[]){
 		matrixB = getMatrix(k, n);
         matrixC = (float *) malloc(m * n * sizeof(float));
 
-		if ( matrixA == NULL || matrixB == NULL ){
-			fprintf(stderr, "No se ha podido obtener alguna de las matrices.\n");
+		if ( matrixC == NULL ){
+			fprintf(stderr, "Error de memoria\n");
             MPI_Abort(MPI_COMM_WORLD, 1);  
             exit(1);
 		}
 	}
 
-    
     MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&k, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&m, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&alfa, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-
     sendCounts = getSendCounts(m, k, numprocs);
     displs = getDispls(m, k, numprocs, sendCounts);
 
-
     if (rank){
-        matrixA = (float *) malloc (sendCounts[rank]*k*sizeof(float));
+        matrixA = (float *) malloc (sendCounts[rank] * k * sizeof(float));
         matrixB = (float *) malloc (k * n * sizeof(float));
+
         if ( matrixB == NULL || matrixA == NULL ){
-			fprintf(stderr, "No se ha podido obtener alguna de las matrices.\n");
+			fprintf(stderr, "Error de memoria\n");
             MPI_Abort(MPI_COMM_WORLD, 1);  
             exit(1);
         }
@@ -178,16 +203,24 @@ int main(int argc, char * argv[]){
     matrixResult = matrixProduct(sendCounts[rank] / k, k, n, matrixA, matrixB, alfa);
 
     recvCounts = getRecvCounts(k, n, sendCounts, numprocs);
+    free(displs);
     displs = getDispls(m, n, numprocs, recvCounts);
     
     MPI_Gatherv(matrixResult, recvCounts[rank], MPI_FLOAT, matrixC, recvCounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-    if (!rank)
+
+    if (!rank){
+        printMatrix(k, n, matrixC);
         free(matrixC);
+        matrixC = matrixProduct(m,k,n, matrixA, matrixB, alfa);
+        printMatrix(k, n, matrixC);
+    }
 
     free(sendCounts);
-    free(displs);
 	free(matrixA);
 	free(matrixB);
+    free(recvCounts);
+    free(matrixResult);
+    free(displs);
 	MPI_Finalize();
 }
