@@ -58,11 +58,20 @@ int * getSendCounts(int rows, int columns, int numProcs){
         n = rows/numProcs;
         if ( (rows % numProcs) != 0 )
             n++;
-        sendCounts[i]=n;
+        sendCounts[i]=n*columns;
         rows -= n;
         numProcs--;
     }
     return sendCounts;
+}
+
+int * getRecvCounts(int columns, int columnsB, int * sendCounts, int numProcs){
+    int * recvCounts = (int *) malloc( numProcs * sizeof(int));
+    int i;
+    for (i=0; i < numProcs; i++)
+        recvCounts[i] = (sendCounts[i] / columns) * columnsB;
+    return recvCounts;
+        
 }
 
 int * getDispls(int rows, int columns, int numProcs, int  * sendCounts){
@@ -75,7 +84,7 @@ int * getDispls(int rows, int columns, int numProcs, int  * sendCounts){
         exit(1);
     }
 
-    for (j=0, i=0; i < rows; j++, i = i + sendCounts[j]){
+    for (j=0, i=0; i < rows && j < numProcs; j++, i = i + (sendCounts[j] / columns)){
         displs[j]=i*columns;
     }
 
@@ -96,11 +105,14 @@ float *  matrixProduct(int rows, int columns, int columnsB, float * matrixA, flo
 }
 
 int main(int argc, char * argv[]){
-    int rank, numprocs, n, k, m, alfa;
+    int rank, numprocs, n, k, m;
+    float alfa;
     int * displs;
     int * sendCounts;
+    int * recvCounts;
 	float * matrixA = NULL;
 	float * matrixB = NULL;
+	float * matrixC = NULL;
     float * matrixResult = NULL;
 
     MPI_Init(&argc, &argv);
@@ -119,7 +131,7 @@ int main(int argc, char * argv[]){
 		m = atoi(argv[1]);
 		k = atoi(argv[2]);
 		n = atoi(argv[3]);
-		alfa = atoi(argv[4]);
+		alfa = atof(argv[4]);
 
 		if ( n < 1 || k < 1 || m < 1 ){
 			fprintf(stderr, "Algún parámetro no tiene un valor aceptable\n");
@@ -128,7 +140,8 @@ int main(int argc, char * argv[]){
 		}
 		matrixA = getMatrix(m, k);
 		matrixB = getMatrix(k, n);
-		
+        matrixC = (float *) malloc(m * n * sizeof(float));
+
 		if ( matrixA == NULL || matrixB == NULL ){
 			fprintf(stderr, "No se ha podido obtener alguna de las matrices.\n");
             MPI_Abort(MPI_COMM_WORLD, 1);  
@@ -140,11 +153,11 @@ int main(int argc, char * argv[]){
     MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&k, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&m, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&alfa, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&alfa, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
 
-    sendCounts = getSendCounts(n, k, numprocs);
-    displs = getDispls(n, k, numprocs, sendCounts);
+    sendCounts = getSendCounts(m, k, numprocs);
+    displs = getDispls(m, k, numprocs, sendCounts);
 
 
     if (rank){
@@ -157,12 +170,20 @@ int main(int argc, char * argv[]){
         }
     }
 
-    MPI_Scatterv(matrixA, sendCounts, displs, MPI_INT, matrixA, sendCounts[rank]*k, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Scatterv(matrixA, sendCounts, displs, MPI_INT, matrixA, sendCounts[rank], MPI_INT, 0, MPI_COMM_WORLD);
 
 	// Replica matrixB en todos los procesos
     MPI_Bcast(matrixB, k*n, MPI_FLOAT, 0, MPI_COMM_WORLD);
+    
+    matrixResult = matrixProduct(sendCounts[rank] / k, k, n, matrixA, matrixB, alfa);
 
-    matrixResult = matrixProduct(sendCounts[rank], k, n, matrixA, matrixB, alfa);
+    recvCounts = getRecvCounts(k, n, sendCounts, numprocs);
+    displs = getDispls(m, n, numprocs, recvCounts);
+    
+    MPI_Gatherv(matrixResult, recvCounts[rank], MPI_FLOAT, matrixC, recvCounts, displs, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+    if (!rank)
+        free(matrixC);
 
     free(sendCounts);
     free(displs);
