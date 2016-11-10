@@ -5,6 +5,16 @@
 #include <stdlib.h>
 #include "mpi.h"
 
+/*
+* Funtion: printMatrix
+* --------------------
+* Imprime una matriz por pantalla
+*
+* rows: Número de filas de la matriz
+* columns: Número de columns de la matriz
+* matrix: La matriz a imprimir
+*
+*/
 void printMatrix(int rows, int columns, float * matrix){
     int i, j;
     for (i=0; i < rows; i++){
@@ -16,7 +26,17 @@ void printMatrix(int rows, int columns, float * matrix){
     printf("\n");
 }
 
-/*La siguiente función inicializa la matriz asignando valores aleatorios*/
+/*
+* Funtion: getRandomMatrix 
+* ------------------------
+* Obtiene una matriz inicializada con números aleatorios 
+*
+* rows: Número de filas de la matriz
+* columns: Número de columns de la matriz
+*
+* returns: Puntero a array de flotantes inicializado con valores
+  aleatorios
+*/
 float * getRamdomMatrix(int rows, int columns){
     int i, j;
 
@@ -37,7 +57,17 @@ float * getRamdomMatrix(int rows, int columns){
     return matrix;
 }
 
-/*La siguiente función inicializa la matriz, siguiendo el ejemplo de matrizVector*/
+/*
+* Funtion: getMatrix 
+* ------------------------
+* Obtiene una matriz inicializada de forma secuencial
+*
+* rows: Número de filas de la matriz
+* columns: Número de columns de la matriz
+*
+* returns: Puntero a array de flotantes inicializado 
+  de forma secuencial
+*/
 float * getMatrix(int rows, int columns){
     int i, j;
     float * matrix = (float *) malloc(rows * columns * sizeof(float));
@@ -55,6 +85,20 @@ float * getMatrix(int rows, int columns){
     return matrix;
 }
 
+/*
+* Funtion: getSendCounts
+* ------------------------
+* Calcula el reparto de elementos por proceso
+*
+* rows: Número de filas de la matriz
+* columns: Número de columns de la matriz
+* numProcs: Número de procesos
+*
+* returns: Puntero de enteros que guarda en cada
+  posición 'k' cuantos elementos le tocan al 'k'
+  proceso
+*
+*/
 int * getSendCounts(int rows, int columns, int numProcs){
     int n, i, aux;
     int * sendCounts = (int *) malloc(numProcs * sizeof(int));
@@ -77,6 +121,22 @@ int * getSendCounts(int rows, int columns, int numProcs){
     return sendCounts;
 }
 
+/*
+* Funtion: getRecvCounts
+* ------------------------
+* Calcula cuantos elementos le tiene que devolver cada
+  proceso al proceso raíz
+*
+* columns: Número de columns de la matriz
+* columnsB: Número de columnas de la segunda matriz
+* sendCounts: Reparto de elementos por proceso
+* numProcs: Número de procesos
+*
+* returns: Puntero de enteros que guarda en cada
+  posición 'k' cuantos elementos tiene que entregar
+  el proceso 'k' al proceso raiz
+*
+*/
 int * getRecvCounts(int columns, int columnsB, int * sendCounts, int numProcs){
     int * recvCounts = (int *) malloc( numProcs * sizeof(int));
     int i;
@@ -93,6 +153,23 @@ int * getRecvCounts(int columns, int columnsB, int * sendCounts, int numProcs){
         
 }
 
+/*
+* Funtion: getDispls
+* ------------------------
+* Obtiene los desplazamientos relativos de un array. 
+*
+* rows: Número de filas de la matriz
+* columns: Número de columns de la matriz
+* numProcs: Número de procesos
+* Counts: Elementos por proceso
+*
+* returns: Puntero de enteros que guarda en cada
+  posición 'k' cuantos elementos a partir de que 
+  elemento se tiene que enviar en el scatterv o
+  a partir de que elemnto se debe guardar en el 
+  gatherv, para cada proceso
+*
+*/
 int * getDispls(int rows, int columns, int numProcs, int  * Counts){
     int i, j;
     int * displs = (int *) malloc ( numProcs * sizeof(int));
@@ -109,6 +186,23 @@ int * getDispls(int rows, int columns, int numProcs, int  * Counts){
     return displs;
 }
 
+/*
+* Funtion: matrixProduct 
+* ------------------------
+* Computa la multiplicación de dos matrices
+*
+* rows: Número de filas de la matriz
+* columns: Número de columns de la matriz
+* columnsB: Número de columnas de la segunda matriz
+* matrixA: La primera matriz
+* matrixB: La segunda matriz
+* alfa: El valor que multiplica a la matriz a
+*
+* returns: Un puntero de flotantes que represanta una matriz
+  inicializada con el resultado de multiplicar matrixA por
+  matrixB
+*
+*/
 float *  matrixProduct(int rows, int columns, int columnsB, float * matrixA, float * matrixB, float alfa){
     int i,j,l;
     float * matrixResult = (float *) malloc ( rows * columnsB * sizeof(float) );
@@ -210,10 +304,9 @@ int main(int argc, char * argv[]){
 
 
     if (!rank){
-        printMatrix(k, n, matrixC);
         free(matrixC);
         matrixC = matrixProduct(m,k,n, matrixA, matrixB, alfa);
-        printMatrix(k, n, matrixC);
+        free(matrixC);
     }
 
     free(sendCounts);
